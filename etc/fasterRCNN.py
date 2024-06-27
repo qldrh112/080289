@@ -1,4 +1,6 @@
+# 라이브러리 가져오기
 import os
+# XML 파일을 파싱하고 생성할 수 있는 모듈, XML 문서를 트리 구조로 다룸
 import xml.etree.ElementTree as ET
 import torch
 import torch.nn.utils as utils
@@ -10,23 +12,29 @@ from torchvision.models.detection import FasterRCNN
 from PIL import Image
 from torchvision import transforms
 from tqdm import tqdm
+# 다양한 백본 모델을 생성하고, 설정하는 데 사용, 객체 탐지 모델에서 특징 추출기로 사용
 from torchvision.models.detection import backbone_utils
 from torchvision.models.detection.anchor_utils import AnchorGenerator
+# 예외 발생 시 트레이스백 정보를 포맷팅하고 출력할 수 있는 모듈, 디버깅을 도와 줌
 import traceback
 from collections import defaultdict
 
 
 def calculate_precision_recall_ap_per_label(predictions, targets, iou_threshold=0.5):
     # 레이블별 성능 계산을 위한 구조 초기화
+    # label_metrics[레이블]['tp'] 등으로 접근
+    # 레이블에 접근할 때 자동으로 아래 기본값이 설정
     label_metrics = defaultdict(lambda: {'tp': 0, 'fp': 0, 'fn': 0, 'total_gt': 0})
 
-    # 각 타겟에 포함된 레이블별 개수 계산
+    # 각 타겟에 포함된 레이블(사람, 자동차 등)별 개수 계산
     for target in targets:
+        # gt(ground truth):  실제 값이나 정답을 의미
         for gt_box, gt_label in zip(target['boxes'], target['labels']):
             label_metrics[gt_label.item()]['total_gt'] += 1
 
     # 예측값과 실제값 비교
     for prediction, target in zip(predictions, targets):
+        # 매칭된 박스
         matched_gt = set()
         gt_boxes = target['boxes']
         gt_labels = target['labels']
@@ -35,22 +43,26 @@ def calculate_precision_recall_ap_per_label(predictions, targets, iou_threshold=
         pred_scores = prediction['scores']
         pred_labels = prediction['labels']
 
+        # 최고의 iou와 그 인덱스를 갱신
         for i, (p_box, p_score, p_label) in enumerate(zip(pred_boxes, pred_scores, pred_labels)):
             best_iou = 0
             best_gt_idx = -1
             for j, (gt_box, gt_label) in enumerate(zip(gt_boxes, gt_labels)):
+                # 예측과 실제가 같으면
                 if p_label == gt_label and j not in matched_gt:
                     iou = calculate_iou(gt_box, p_box)
                     if iou > best_iou:
                         best_iou = iou
                         best_gt_idx = j
 
+            # iou 문지방을 넘어라
             if best_iou > iou_threshold:
                 label_metrics[p_label.item()]['tp'] += 1
                 matched_gt.add(best_gt_idx)
             else:
                 label_metrics[p_label.item()]['fp'] += 1
 
+        # 매칭되지 않은 것은 모두 false negative로 간주
         for j, gt_label in enumerate(gt_labels):
             if j not in matched_gt:
                 label_metrics[gt_label.item()]['fn'] += 1
@@ -64,6 +76,7 @@ def calculate_precision_recall_ap_per_label(predictions, targets, iou_threshold=
         total_gt = counts['total_gt']
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0
         recall = tp / total_gt if total_gt > 0 else 0
+        # AP: Precision-Recall 곡선 아래 면적을 계산
         ap = (precision * recall)  # Simplified AP
         results[label] = {'precision': precision, 'recall': recall, 'AP': ap}
 
@@ -71,6 +84,7 @@ def calculate_precision_recall_ap_per_label(predictions, targets, iou_threshold=
 
 def calculate_iou(gt_box, pred_box):
     """Calculate intersection over union for the specified ground truth and prediction boxes"""
+    """지정된 실제 박스와 예측 박스의 교차 비율(Intersection over Union)을 계산합니다."""
     x1_t, y1_t, x2_t, y2_t = gt_box['bbox']
     x1_p, y1_p, x2_p, y2_p = pred_box['bbox']
 
@@ -79,285 +93,14 @@ def calculate_iou(gt_box, pred_box):
     x2_i = min(x2_t, x2_p)
     y2_i = min(y2_t, y2_p)
 
+    # 교집합 면적
     area_i = max(0, x2_i - x1_i) * max(0, y2_i - y1_i)
     area_t = (x2_t - x1_t) * (y2_t - y1_t)
     area_p = (x2_p - x1_p) * (y2_p - y1_p)
+    # 합집합 면적
     area_u = area_t + area_p - area_i
 
-    return area_i / area_u if area_u != 0 else 0
-
-def calculate_precision_recall_ap(predictions, targets, iou_threshold=0.5):
-    """Calculate precision, recall, and AP for the given predictions and targets"""
-    tp = 0
-    fp = 0
-    fn = 0
-    n_positives = 0
-
-    # Count total positive targets
-    for target in targets:
-        n_positives += len(target['boxes'])
-
-    for prediction, target in zip(predictions, targets):
-... (366줄 남음)
-접기
-message.txt
-17KB
-코드해설 필요하면 주말에 오세요
-from ultralytics import YOLO
-import cometml
-import cv2
-
-#cometapikey = 'r0vxHKbhI9MrufPfWBLSfsTPw'
-
-cometml.init(project_name='seoulsystem-yolo8v')
-
-model = YOLO("yolov9e.pt")
-
-model.train(data = 'data/seoul/for_yolo/tld.yaml',
-            device=0,
-            epochs=15,
-            imgsz=640,
-            project='seoul-system-yolo9v',
-            batch=8,
-            save_period=1,
-            save_json=True,
-            name='test',
-            exist_ok=True,)
-
-
-if __name
- == "__main":
-epoch = 15
-imgsz = 640
-output_path = 'llamaparse/yolotest'
-main(epoch, imgsz, output_path)
-이상하게 보내지는군
-from ultralytics import YOLO
-import comet_ml
-import cv2
-
-comet_ml.init(project_name='seoulsystem-yolo8v')
-
-model = YOLO("yolov9e.pt")
-
-model.train(data = 'data/seoul/for_yolo/tld.yaml',
-            device=0,
-            epochs=15,
-            imgsz=640,
-            project='seoul-system-yolo9v',
-            batch=8,
-            save_period=1,
-            save_json=True,
-            name='test',
-            exist_ok=True,)
-위에건 fasterrcnn
-아래건 yolo
-import os
-from PIL import Image, ImageDraw, ImageFont
-from ultralytics import YOLO
-import torch
-
-def nms(boxes, scores, iou_threshold):
-    if not boxes:
-        return []
-    
-    boxes = torch.tensor(boxes, dtype=torch.float32)
-    scores = torch.tensor(scores, dtype=torch.float32)
-    x1, y1, x2, y2 = boxes.T
-    areas = (x2 - x1 + 1) * (y2 - y1 + 1)
-    _, order = scores.sort(0, descending=True)
-    keep = []
-
-    while order.numel() > 0:
-        i = order[0].item()
-        keep.append(i)
-        if order.numel() == 1:
-            break
-        inter = torch.prod(torch.min(boxes[order[1:]], boxes[i]) - torch.max(boxes[order[1:]], boxes[i]) + 1, 1)
-        iou = inter / (areas[i] + areas[order[1:]] - inter)
-        ids = (iou <= iou_threshold).nonzero().squeeze()
-        if ids.numel() == 0:
-            break
-        order = order[ids + 1]
-
-    return keep
-
-def save_detection_data(sns_output_dir, boxes, scores, labels):
-    filename = os.path.join(sns_output_dir, "detections.txt")
-    with open(filename, "w") as file:
-        for box, score, label in zip(boxes, scores, labels):
-            file.write(f"Label: {label}, Score: {score:.2f}, Box: [{', '.join(map(str, map(int, box)))}]\n")
-
-def load_and_process_images(input_dir, output_dir, model, threshold=0.1, iou_thresh=0.5, target_labels=['person']):
-    if not os.path.exists(input_dir):
-        print(f"입력 디렉토리 {input_dir}가 존재하지 않습니다.")
-        return
-
-    os.makedirs(output_dir, exist_ok=True)
-    all_detections_dir = os.path.join(output_dir, "All_Detections")
-    os.makedirs(all_detections_dir, exist_ok=True)
-
-    for image_name in os.listdir(input_dir):
-        image_path = os.path.join(input_dir, image_name)
-        if image_path.lower().endswith(('.png', '.jpg', '.jpeg')):
-            image = Image.open(image_path)
-            results = model(image)
-            draw = ImageDraw.Draw(image)
-            font = ImageFont.load_default()
-            boxes = []
-            scores = []
-            labels = []
-
-            for result in results:
-                if result.boxes.shape[0] > 0:
-                    confs = result.boxes.conf.cpu().tolist()
-                    for i, box in enumerate(result.boxes.xyxy):
-                        label = result.names[result.boxes.ids[i]]
-                        confidence = round(confs[i], 2)
-                        if confidence > threshold and label in target_labels:
-                            boxes.append(box.cpu().tolist())
-                            scores.append(confidence)
-                            labels.append(label)
-
-            keep = nms(boxes, scores, iou_thresh)
-            boxes = [boxes[i] for i in keep]
-            scores = [scores[i] for i in keep]
-            labels = [labels[i] for i in keep]
-
-            for index in keep:
-                x1, y1, x2, y2 = map(int, boxes[index])
-                confidence = scores[index]
-                label = labels[index]
-                draw.rectangle([x1, y1, x2, y2], outline="green", width=2)
-                draw.text((x1, y1 - 10), f"{label} {confidence:.2f}", fill="red", font=font)
-
-            original_save_path = os.path.join(all_detections_dir, image_name)
-            image.save(original_save_path)
-            print(f"{original_save_path}에 객체 인식 원본 이미지를 저장했습니다.")
-
-            base_filename = os.path.splitext(image_name)[0]  # 확장자 제거
-            for sns_name in ['facebook', 'instagram', 'twitter']:
-                sns_output_dir = os.path.join(output_dir, base_filename, sns_name)
-                os.makedirs(sns_output_dir, exist_ok=True)
-                image_save_path = os.path.join(sns_output_dir, f"{sns_name}_{image_name}")
-                image.save(image_save_path)
-                print(f"{image_save_path}에 처리된 이미지를 저장했습니다.")
-                save_detection_data(sns_output_dir, boxes, scores, labels)
-
-if __name__ == "__main__":
-    model = YOLO('seoul/checkpoint/yolov8/best.pt')
-
-    input_dir = 'data/seoul/test'
-    output_dir = 'seoul/output'
-    threshold = 0.1
-    iou_thresh = 0.1
-    # sns = 'instagram' #'facebook' or 'twitter' or 'instagram' or None
-... (4줄 남음)
-접기
-message.txt
-5KB
-이거는 yolo를 이용한 개체 finder
-6월 말부터 한 2주정도 학송선생이 내 룸메가 되기로 했거든요
-종종 찾아오도록 하세요
-이규석 — 오늘 오후 1:14
-으하하하
-마지막 줄이 가장 재미난 코드네요
-아니네 [-2:]라고 해야하나
-전에 yolo 코드 맨 처음 여기서 봤을 때
-감도 안 잡혔는데 이제는 그래도 입질은 오네요
-슈넬치킨맨 — 오늘 오후 1:40
-욜로학습은
-코멧에 계정파서
-cometkey 주고 하세요
-이규석 — 오늘 오후 1:42
-얏호
-﻿
-import os
-import xml.etree.ElementTree as ET
-import torch
-import torch.nn.utils as utils
-import torchvision
-import numpy as np
-
-from torch.utils.data import Dataset, DataLoader
-from torchvision.models.detection import FasterRCNN
-from PIL import Image
-from torchvision import transforms
-from tqdm import tqdm
-from torchvision.models.detection import backbone_utils
-from torchvision.models.detection.anchor_utils import AnchorGenerator
-import traceback
-from collections import defaultdict
-
-
-def calculate_precision_recall_ap_per_label(predictions, targets, iou_threshold=0.5):
-    # 레이블별 성능 계산을 위한 구조 초기화
-    label_metrics = defaultdict(lambda: {'tp': 0, 'fp': 0, 'fn': 0, 'total_gt': 0})
-
-    # 각 타겟에 포함된 레이블별 개수 계산
-    for target in targets:
-        for gt_box, gt_label in zip(target['boxes'], target['labels']):
-            label_metrics[gt_label.item()]['total_gt'] += 1
-
-    # 예측값과 실제값 비교
-    for prediction, target in zip(predictions, targets):
-        matched_gt = set()
-        gt_boxes = target['boxes']
-        gt_labels = target['labels']
-
-        pred_boxes = prediction['boxes']
-        pred_scores = prediction['scores']
-        pred_labels = prediction['labels']
-
-        for i, (p_box, p_score, p_label) in enumerate(zip(pred_boxes, pred_scores, pred_labels)):
-            best_iou = 0
-            best_gt_idx = -1
-            for j, (gt_box, gt_label) in enumerate(zip(gt_boxes, gt_labels)):
-                if p_label == gt_label and j not in matched_gt:
-                    iou = calculate_iou(gt_box, p_box)
-                    if iou > best_iou:
-                        best_iou = iou
-                        best_gt_idx = j
-
-            if best_iou > iou_threshold:
-                label_metrics[p_label.item()]['tp'] += 1
-                matched_gt.add(best_gt_idx)
-            else:
-                label_metrics[p_label.item()]['fp'] += 1
-
-        for j, gt_label in enumerate(gt_labels):
-            if j not in matched_gt:
-                label_metrics[gt_label.item()]['fn'] += 1
-
-    # 레이블별 정밀도, 재현율, AP 계산
-    results = {}
-    for label, counts in label_metrics.items():
-        tp = counts['tp']
-        fp = counts['fp']
-        fn = counts['fn']
-        total_gt = counts['total_gt']
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-        recall = tp / total_gt if total_gt > 0 else 0
-        ap = (precision * recall)  # Simplified AP
-        results[label] = {'precision': precision, 'recall': recall, 'AP': ap}
-
-    return results
-
-def calculate_iou(gt_box, pred_box):
-    """Calculate intersection over union for the specified ground truth and prediction boxes"""
-    x1_t, y1_t, x2_t, y2_t = gt_box['bbox']
-    x1_p, y1_p, x2_p, y2_p = pred_box['bbox']
-
-    x1_i = max(x1_t, x1_p)
-    y1_i = max(y1_t, y1_p)
-    x2_i = min(x2_t, x2_p)
-    y2_i = min(y2_t, y2_p)
-
-    area_i = max(0, x2_i - x1_i) * max(0, y2_i - y1_i)
-    area_t = (x2_t - x1_t) * (y2_t - y1_t)
-    area_p = (x2_p - x1_p) * (y2_p - y1_p)
-    area_u = area_t + area_p - area_i
-
+    # 교집합 면적을 합집합 면적으로 나눈 비율(IoU)를 반환
     return area_i / area_u if area_u != 0 else 0
 
 def calculate_precision_recall_ap(predictions, targets, iou_threshold=0.5):
@@ -395,11 +138,6 @@ def calculate_precision_recall_ap(predictions, targets, iou_threshold=0.5):
     ap = precision * recall  # Simplified AP calculation for example purposes
 
     return precision, recall, ap
-
-
-
-
-
 
 def parse_annotation(xml_file, label_map):
     tree = ET.parse(xml_file)
@@ -560,8 +298,6 @@ def get_model(num_classes):
     
 #     return model
 
-    
-
 def collate_fn(batch):
     images = [transforms.ToTensor()(item[0]) for item in batch]  # Convert PIL.Image to tensor
     targets = [item[1] for item in batch]
@@ -698,8 +434,6 @@ def main():
                     f.write(file_names[0][0])
                     f.write('\n')
                     
-                
-            
         lr_scheduler.step()
 
         avg_loss = running_loss / len(train_data_loader) if running_loss != 0 else float('nan')
@@ -738,5 +472,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-message.txt
-17KB
