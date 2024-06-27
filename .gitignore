@@ -1,5 +1,6 @@
 # Ignore .pt files
 *.pt
+*.nlp
 
 # Ignore everything in the 'data' directory
 data/
