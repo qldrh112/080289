@@ -104,13 +104,13 @@ def calculate_iou(gt_box, pred_box):
     return area_i / area_u if area_u != 0 else 0
 
 def calculate_precision_recall_ap(predictions, targets, iou_threshold=0.5):
-    """Calculate precision, recall, and AP for the given predictions and targets"""
+    """예측과 실제 간 정밀도, 정확도, AP 계산"""
     tp = 0
     fp = 0
     fn = 0
     n_positives = 0
 
-    # Count total positive targets
+    # 박스 수 세기
     for target in targets:
         n_positives += len(target['boxes'])
 
@@ -118,7 +118,7 @@ def calculate_precision_recall_ap(predictions, targets, iou_threshold=0.5):
         pred_boxes = prediction['boxes']
         gt_boxes = target['boxes']
 
-        # Match detections to ground truth
+        # 실제와 같은 것 찾기
         matched = set()
         for i, pred_box in enumerate(pred_boxes):
             for j, gt_box in enumerate(gt_boxes):
@@ -140,11 +140,14 @@ def calculate_precision_recall_ap(predictions, targets, iou_threshold=0.5):
     return precision, recall, ap
 
 def parse_annotation(xml_file, label_map):
+    # XML 요소에 접근할 수 있게 트리 구조로 변환
+    # XML 문서는 계층적, 이미지에 대한 메타데이터를 담음
     tree = ET.parse(xml_file)
     root = tree.getroot()
 
     boxes = []
     labels = []
+    # 모든  <object> 요소를 반복
     for obj in root.iter('object'):
         label = obj.find('name').text
         labels.append(label_map[label])  # 레이블 매핑 사용
@@ -156,14 +159,15 @@ def parse_annotation(xml_file, label_map):
     return boxes, labels
 
 class CustomDataset(Dataset):
+    # 어노테이션이란 이미지에 대한 메타데이터
     def __init__(self, root, label_map, transforms=None, target_size=(3676, 2715)):
         self.root = root
-        self.transforms = transforms
+        self.transforms = transforms 
         self.target_size = target_size        
         self.label_map = label_map      
         self.file_names = []  
         
-        # 이미지와 어노테이션 파일 리스트
+        # 이미지와 어노테이션 파일 리스트(img, annotations 디렉토리에서 모든 파일을 가져 옴)
         imgs = list(sorted(os.listdir(os.path.join(root, "img"))))
         annotations = list(sorted(os.listdir(os.path.join(root, "annotations"))))
 
@@ -173,16 +177,20 @@ class CustomDataset(Dataset):
         for img in imgs:
             # annot = img.replace('.jpeg', '.xml')  # 이미지 파일 이름을 어노테이션 파일 이름으로 변경
             # annot = img.split('.')[0]+'.xml'
+            # 확장자의 차이가 있으므로
             if img[-4] == '.':
                 annot = img[:-4]+'.xml'
             elif img[-5] == '.':
                 annot = img[:-5]+'.xml'
-            if annot in annotations:  # 어노테이션이 있는 이미지만 사용
+            # 어노테이션이 있는 이미지만 사용
+            # 이거 중복해서 값이 들어가는 거 아니야?
+            if annot in annotations:  
                 self.file_names.append(img)
                 self.imgs.append(img)
                 self.annotations.append(annot)
         
     def __getitem__(self, idx):
+        # dataset[i] -> dataset.__getitem__(i)이 실행
         # 이미지와 어노테이션 파일의 이름 가져오기
         img_filename = self.imgs[idx]
         annot_filename = self.annotations[idx]
