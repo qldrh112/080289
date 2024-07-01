@@ -196,19 +196,20 @@ class CustomDataset(Dataset):
         annot_filename = self.annotations[idx]
 
         # 이미지 파일과 어노테이션 파일의 경로 생성
+        # C:/data/img/image1.jpg
         img_path = os.path.join(self.root, "img", img_filename)
         annot_path = os.path.join(self.root, "annotations", annot_filename)
 
         # 이미지 열기
         img = Image.open(img_path).convert("RGB")
 
-        # 이미지 크기 조절
+        # 이미지 크기 조절, pillow 라이브러리에서 제공하는 이미지 리샘플링 필터  
         img = img.resize(self.target_size, Image.BILINEAR)
 
         # 어노테이션 파싱
         boxes, labels = parse_annotation(annot_path, self.label_map)
 
-        # 바운딩 박스 조정
+        # 원본 이미지가 다양한 크기를 가질 수 있기에 바운딩 박스 조정
         width_ratio = self.target_size[0] / img.width
         height_ratio = self.target_size[1] / img.height
 
@@ -225,9 +226,13 @@ class CustomDataset(Dataset):
         new_boxes = torch.as_tensor(new_boxes, dtype=torch.float32)
         labels = torch.as_tensor(labels, dtype=torch.int64)
 
+        # 정수를 텐서로 변환
         image_id = torch.tensor([idx])
         # print(img_filename)
+
+        # 각 바운딩 박스의 면적 계산
         area = (new_boxes[:, 3] - new_boxes[:, 1]) * (new_boxes[:, 2] - new_boxes[:, 0])
+        # 이미지 내 객체의 수를 0으로 채워진 1차원 텐서를 만듦
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
 
         target = {}
@@ -237,6 +242,7 @@ class CustomDataset(Dataset):
         target["area"] = area
         target["iscrowd"] = iscrowd
 
+        # 데이터 전처리나 augmentation이 필요할 때
         if self.transforms is not None:
             img = self.transforms(img)
 
@@ -246,9 +252,10 @@ class CustomDataset(Dataset):
         return len(self.imgs)
     
     def split_dataset(self, train_ratio=0.9):
+        """리스트 형태의 이미지와 어노테이션 파일을 다루므로 커스텀 메서드로 구현"""
         total_length = len(self)
         train_length = int(total_length * train_ratio)
-        test_length = total_length - train_length
+        # test_length = total_length - train_length
         
         train_dataset = CustomDataset.__new__(CustomDataset)
         train_dataset.root = self.root
@@ -283,10 +290,13 @@ class CustomDataset(Dataset):
 def get_model(num_classes):
     # Load a pre-trained vgg16 model
     get_vgg16 = torchvision.models.vgg16(pretrained=True)
+    # 특징을 추출하는 데 사용하는 기본 네트워크
     backbone = torch.nn.Sequential(*list(get_vgg16.features.children()))
 
     backbone.out_channels = 512
     
+    # 객체 탐지를 위한 기본적인 관심 영역(anchors)를 생성하여 객체를 예측
+    # 크기와 비율을 설정하여 다양한 형태의 앵커 생성
     rpn_anchor_generator = AnchorGenerator(
     sizes=((32, 64, 128, 256, 512),),
     aspect_ratios=((0.5, 1.0, 2.0),)
@@ -311,6 +321,7 @@ def collate_fn(batch):
     targets = [item[1] for item in batch]
     file_names = [item[2] for item in batch]
     
+    # 여러 텐서를 새로운 차원에 연결 행이 늘어나는 방식이다.
     images = torch.stack(images, dim=0)
 
     return images, targets, file_names
@@ -357,7 +368,9 @@ def calculate_accuracy(predictions, targets, iou_threshold=0.5):
         iou_matrix = calculate_iou(pred_boxes, target_boxes)
 
         for i in range(len(pred_boxes)):
+            # i번째 예측 박스와 각 실제 박스 사이의 ioU 중 가장 높은 값 선택
             max_iou = np.max(iou_matrix[i, :])
+            # 문지방보다 ioU 값이 크거나 ioU 행렬의 i 번째 행에서 최대 ioU 값의 인덱스
             if max_iou >= iou_threshold and pred_labels[i] == target_labels[np.argmax(iou_matrix[i, :])]:
                 total_correct += 1
 
@@ -368,6 +381,7 @@ def calculate_accuracy(predictions, targets, iou_threshold=0.5):
 
 
 def main():
+    # 사용 가능한 첫 번째 CUDA GPU를 지정함
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -395,21 +409,23 @@ def main():
     train_data_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
     print(train_data_loader)
     test_data_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
-       
-    # Define the model
-    model = get_model(num_classes=len(label_map)+1)  # For four classes + background
+    
+    model = get_model(num_classes=len(label_map)+1)  # Faster R-CNN의 클래스는 정의한 클래스 + 배경
     model.to(device)
 
     num_epochs = 10
 
-    # Define optimizer and loss function
+    # 모델의 학습 가능한 파라미터 리스트
     params = [p for p in model.parameters() if p.requires_grad]
+    # momentum: 이전 기울기의 몇 %를 추가할 지, weight_decay: 가중치에 0.0005의 작은 페널티 부여
     optimizer = torch.optim.SGD(params, lr=0.001, momentum=0.9, weight_decay=0.0005)
+    # 매 3 번째 에포크마다 학습률을 10% 감소시킴
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
    
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
+        # desc: 진행 바에 표시되는 설명
         for images, targets, file_names in tqdm(train_data_loader, desc=f"Epoch {epoch+1}/{num_epochs}"):
             try:
                 images = list(image.to(device) for image in images)
@@ -422,10 +438,12 @@ def main():
                 loss_dict = model(images, targets)
                 losses = sum(loss for loss in loss_dict.values())
 
-                # Backpropagation
+                # Backpropagation(역전파)
+                # 역전파 실행 전 기울기 초기화
                 optimizer.zero_grad()
                 losses.backward()
 
+                # 기울기의 크기를 제한, 기울기 폭주를 방지하여 학습 안정성 향상, max_norm = 1.0 기울기의 최대 L2 norm 값을 1로 제한
                 utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
                 
@@ -433,6 +451,7 @@ def main():
                     running_loss += losses.item()
                 else:
                     print("Warning: NaN detected in losses.")
+
             except Exception as ex:
                 print(file_names)
                 err_msg = traceback.format_exc()                
@@ -447,8 +466,8 @@ def main():
         avg_loss = running_loss / len(train_data_loader) if running_loss != 0 else float('nan')
         print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {avg_loss}")
 
-        # 모델 저장        
-            
+        # 모델 저장
+        # 모델의 학습 가능한 파라미터와 버퍼를 딕셔너리 형태로 반환, 모델의 상태를 저장하고 나중에 불러올 수 있다.
         torch.save(model.state_dict(), f"seoul/checkpoint/vgg16/model_epoch_{epoch+1}.pth")
         print(f"Model saved as model_epoch_{epoch+1}.pth")
 
